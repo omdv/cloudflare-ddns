@@ -1,3 +1,3 @@
 FROM busybox:musl
-COPY ./dns-updater /dns-updater
-CMD ["/dns-updater"]
+COPY ./dns-updater.sh /dns-updater.sh
+CMD ["/dns-updater.sh"]
