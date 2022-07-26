@@ -1,0 +1,42 @@
+#!/bin/bash
+DOMAIN=${DOMAIN:-"example.com"}
+TOKEN=${API_TOKEN:-"123-456-789-abc-def"}
+
+# api url
+URL="https://api.cloudflare.com/client/v4/zones"
+
+# get zone id
+REC=$(curl -s -X GET "${URL}?name=${DOMAIN}&status=active&page=1&per_page=20&order=status&direction=desc&match=all" \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json")
+ZONE_ID=$(echo ${REC} | jq -r '.result[0].id')
+
+# get record ids showing all A records:
+REC=$(curl -s -X GET "${URL}/${ZONE_ID}/dns_records?type=A" -H "Authorization: Bearer ${TOKEN}" \
+-H "Content-Type: application/json")
+RECORD_IDS=$(echo ${REC} | jq -r '.result[].id' | tr '\n' ' ')
+
+for RECORD_ID in ${RECORD_IDS}
+do
+    # get actual registered ip
+    REC=$(curl -s -X GET "${URL}/${ZONE_ID}/dns_records/${RECORD_ID}" -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json")
+    registered=$(echo ${REC} | jq '.result.content')
+
+    # get current real external ip
+    current=\"$(curl -s ifconfig.me || curl -s icanhazip.com)\"
+
+    # function to update record ip (other values remain the same)
+    function change_record() {
+        name=$(echo ${REC} | jq '.result.name')
+        type=$(echo ${REC} | jq '.result.type')
+        ttl=$(echo ${REC} | jq '.result.ttl')
+        proxied=$(echo ${REC} | jq '.result.proxied')
+        curl -X PUT "${URL}/${ZONE_ID}/dns_records/${RECORD_ID}" -H "Authorization: Bearer ${TOKEN}" \
+        --data '{"type":'"${type}"',"name":'"${name}"',"content":'"${current}"',"ttl":'"${ttl}"',"proxied":'"${proxied}"'}'
+    }
+    [ "$current" != "$registered" ] && {
+        change_record     
+        echo "Updated ${registered} to ${current} for ${DOMAIN}"
+    }
+done
