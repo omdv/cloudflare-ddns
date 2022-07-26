@@ -1,3 +1,4 @@
-FROM busybox:musl
-COPY ./dns-updater.sh /dns-updater.sh
-CMD ["/dns-updater.sh"]
+FROM alpine:latest
+RUN apk --update add curl jq
+COPY dns-updater /app/dns-updater
+CMD ["/app/dns-updater"]
