@@ -13,12 +13,20 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
-    - name: Publish to Registry
-      uses: elgohr/Publish-Docker-Github-Action@v4
+    - uses: actions/checkout@v4
+
+    - name: Login to ghcr.io
+      uses: docker/login-action@v3
       with:
-        name: ${{ github.repository }}
+        registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-        registry: ghcr.io
-        snapshot: true
+
+    - name: Build and push image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        tags: |
+          ghcr.io/omdv/cloudflare-ddns:latest
+          ghcr.io/omdv/cloudflare-ddns:${{ github.sha }}
