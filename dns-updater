@@ -1,6 +1,7 @@
 #!/bin/sh
 DOMAIN=${DOMAIN:-"example.com"}
 TOKEN=${API_TOKEN:-"123-456-789-abc-def"}
+IGNORE_RECORDS=${IGNORE_RECORDS:-""}
 
 # api url
 URL="https://api.cloudflare.com/client/v4/zones"
@@ -21,9 +22,21 @@ REC=$(curl -s -X GET "${URL}?name=${DOMAIN}&status=active&page=1&per_page=20&ord
     -H "Content-Type: application/json")
 ZONE_ID=$(echo ${REC} | jq -r '.result[0].id')
 
+[ -z "${ZONE_ID}" ] || [ "${ZONE_ID}" = "null" ] && {
+    echo "Zone ID not found for ${DOMAIN}" >&2
+    echo ${REC} | jq -r '.errors[]? | "Cloudflare API error \(.code): \(.message)"' >&2
+    exit 1
+}
+
 # get record ids showing all A records:
 REC=$(curl -s -X GET "${URL}/${ZONE_ID}/dns_records?type=A" -H "Authorization: Bearer ${TOKEN}" \
 -H "Content-Type: application/json")
+
+[ "$(echo ${REC} | jq -r '.result == null')" = "true" ] && {
+    echo "Failed to get A records for ${DOMAIN}" >&2
+    echo ${REC} | jq -r '.errors[]? | "Cloudflare API error \(.code): \(.message)"' >&2
+    exit 1
+}
 RECORD_IDS=$(echo ${REC} | jq -r '.result[].id' | tr '\n' ' ')
 
 for RECORD_ID in ${RECORD_IDS}
@@ -31,13 +44,21 @@ do
     # get actual registered ip
     REC=$(curl -s -X GET "${URL}/${ZONE_ID}/dns_records/${RECORD_ID}" -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json")
+    name=$(echo ${REC} | jq -r '.result.name')
     registered=$(echo ${REC} | jq '.result.content')
+
+    skip_record=0
+    for IGNORE_RECORD in ${IGNORE_RECORDS}
+    do
+        [ "${name}" = "${IGNORE_RECORD}" ] || [ "${name}" = "${IGNORE_RECORD}.${DOMAIN}" ] && skip_record=1
+    done
+    [ "${skip_record}" = "1" ] && continue
 
     # get current real external ip
     current=\"$(curl -s ifconfig.me || curl -s icanhazip.com)\"
 
     [ "$current" != "$registered" ] && {
-        change_record     
+        change_record
         echo "Updated ${registered} to ${current} for ${DOMAIN}"
     }
 done
